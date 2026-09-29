@@ -23,15 +23,31 @@
 
 App Server 使用本机 Codex 的配置与登录态，通过 stdio 启动短时子进程。调度器负责关闭自己创建的子进程。Codex 0.154 的空会话需显式落盘；带来源标识的初始化记录通过 `thread/inject_items` 写入会话历史，真正的任务 prompt 在创建进程退出后单独入队。
 
-## 安装
+## 安装与一键配置
+
+准备好 Node.js 24+ 和已登录的 Codex CLI 后，从 npm 官方公开源安装，并一键注册 MCP：
+
+```powershell
+npm install -g @bakapiano/codex-cli-schedule --registry=https://registry.npmjs.org/
+codex-schedule setup
+```
+
+新开 Codex CLI 会话，输入 `/mcp` 检查 `codex_schedule` 的连接状态。配置选项见[安装为 Codex MCP](#安装为-codex-mcp)。
+
+单次调用也可以使用：
+
+```powershell
+npx --yes --registry=https://registry.npmjs.org/ @bakapiano/codex-cli-schedule --help
+```
+
+### 从源代码安装
 
 ```powershell
 git clone https://github.com/bakapiano/codex-cli-schedule.git
 cd codex-cli-schedule
 npm ci
 npm test
-npm pack
-npm install -g ./bakapiano-codex-cli-schedule-0.1.0.tgz
+npm install -g .
 ```
 
 从源代码运行也可以：
@@ -88,18 +104,33 @@ codex-schedule delete <schedule-id>
 
 ## 安装为 Codex MCP
 
-推荐将全局安装后的 JS 入口配置为 stdio MCP，避免 Windows `.cmd` 启动器差异：
+安装后，一条命令即可注册：
 
 ```powershell
-$root = npm root -g
-$entry = Join-Path $root '@bakapiano\codex-cli-schedule\dist\src\cli.js'
-codex mcp add codex_schedule -- node $entry mcp
-
-# 指定共享数据目录时：
-codex mcp add codex_schedule -- node $entry --home D:\codex-scheduler-data mcp
+codex-schedule setup
 ```
 
-新开 Codex CLI 会话后，可自然语言创建和管理调度任务。每个 CLI 的 MCP 进程是轻量客户端，调度器在独立进程中继续运行。
+`setup` 调用官方 `codex mcp add` 命令并校验保存结果，自动记录当前 Node.js、已安装包的 JS 入口以及调度器数据目录的绝对路径，兼容 Windows npm 启动器和 macOS/Linux 可执行文件。
+
+重复执行会保留匹配的配置。同名的其他配置会受到保护，可通过 `--name` 选择新名称，或用 `--force` 明确替换。其他 MCP 条目由 Codex CLI 保留。移动安装位置或切换 Node.js 可执行文件后，可运行 `codex-schedule setup --force` 更新注册路径。
+
+```powershell
+# 预览即将注册的配置：
+codex-schedule setup --dry-run
+
+# 指定共享数据目录时：
+codex-schedule --home D:\codex-scheduler-data setup
+
+# 指定 MCP 名称或用于注册的 Codex CLI 路径：
+codex-schedule setup --name my_scheduler --codex C:\path\to\codex.exe
+
+# 明确替换已有的同名配置：
+codex-schedule setup --force
+
+codex mcp list
+```
+
+新开 Codex CLI 会话后，使用 `/mcp` 查看连接状态，即可自然语言创建和管理调度任务。每个 CLI 的 MCP 进程是轻量客户端，调度器在独立进程中继续运行。注册步骤仅更新 MCP 配置，daemon 会在 MCP 或管理命令首次使用时启动。先全局安装再执行 setup，可确保注册路径持续可用。
 
 ### MCP 工具
 
@@ -149,3 +180,7 @@ npm test
 自动测试覆盖时间/时区、CRUD、持久化、单实例、异常恢复、队列专用协议、新会话 writer 释放，以及真实 MCP stdio 子进程访问 daemon。
 
 真实 Codex CLI 测试流程见 [docs/e2e.md](docs/e2e.md)。模型调用使用当前 Codex 登录态，测试 prompt 限定为文本确认。
+
+## 发布
+
+维护者创建标签为 `v<包版本号>` 的 GitHub Release 后，发布 workflow 会校验版本号、执行 Windows 和 Linux 测试，并通过 npm Trusted Publishing 发布构建产物。首次发布配置与后续发版步骤见 [docs/publishing.md](docs/publishing.md)。

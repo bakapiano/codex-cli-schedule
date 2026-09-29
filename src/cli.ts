@@ -5,9 +5,19 @@ import { call, daemonStatus, ensureDaemon, request } from './client.js';
 import { dataDirectory, readConfig } from './paths.js';
 import { errorMessage } from './model.js';
 
-const program = new Command().name('codex-schedule').description('Persistent, queue-only scheduling for Codex CLI sessions').version('0.1.0').option('--home <path>', 'Shared scheduler data directory');
+const { version } = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { version: string };
+const program = new Command().name('codex-schedule').description('Persistent, queue-only scheduling for Codex CLI sessions').version(version).option('--home <path>', 'Shared scheduler data directory');
 const home = () => dataDirectory(program.opts().home);
 const print = (value: unknown) => console.log(JSON.stringify(value, null, 2));
+program.command('setup').description('Register this installation as a Codex MCP server')
+  .option('--name <name>', 'MCP server name', 'codex_schedule')
+  .option('--codex <executable>', 'Codex CLI executable used for registration')
+  .option('--dry-run', 'Preview the registration without changing Codex configuration')
+  .option('--force', 'Replace a different MCP configuration with the same name')
+  .action(async options => {
+    const { setupMcp } = await import('./setup.js');
+    print(setupMcp({ ...options, home: home() }));
+  });
 function seconds(value: string): number {
   const match = /^(\d+)(s|m|h|d)?$/.exec(value);
   if (!match) throw new Error('Use a duration such as 30s, 5m, 2h, or 1d.');

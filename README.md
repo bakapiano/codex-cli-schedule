@@ -23,15 +23,31 @@ The scheduler uses a narrow set of App Server methods, including `initialize`, `
 
 The scheduler starts short-lived App Server subprocesses over stdio using the local Codex configuration and authentication. It closes the subprocesses it creates. Empty sessions in Codex 0.154 require explicit persistence: `thread/inject_items` writes the attributed initialization record to history, and the actual task prompt is queued separately after the creating process exits.
 
-## Installation
+## Installation and one-command MCP setup
+
+With Node.js 24+ and an authenticated Codex CLI ready, install from the public npm registry and register the MCP server:
+
+```powershell
+npm install -g @bakapiano/codex-cli-schedule --registry=https://registry.npmjs.org/
+codex-schedule setup
+```
+
+Open a new Codex CLI session and use `/mcp` to check the `codex_schedule` connection. See [Adding the Codex MCP server](#adding-the-codex-mcp-server) for setup options.
+
+For a one-off invocation:
+
+```powershell
+npx --yes --registry=https://registry.npmjs.org/ @bakapiano/codex-cli-schedule --help
+```
+
+### From source
 
 ```powershell
 git clone https://github.com/bakapiano/codex-cli-schedule.git
 cd codex-cli-schedule
 npm ci
 npm test
-npm pack
-npm install -g ./bakapiano-codex-cli-schedule-0.1.0.tgz
+npm install -g .
 ```
 
 You can also run directly from source:
@@ -88,18 +104,33 @@ For a newly created session, find its `sessionId` in `runs`. Open it in a termin
 
 ## Adding the Codex MCP server
 
-Configure the installed JavaScript entry point as a stdio MCP server for consistent launching across Windows environments:
+Register the installed package with one command:
 
 ```powershell
-$root = npm root -g
-$entry = Join-Path $root '@bakapiano\codex-cli-schedule\dist\src\cli.js'
-codex mcp add codex_schedule -- node $entry mcp
-
-# With a specific shared data directory:
-codex mcp add codex_schedule -- node $entry --home D:\codex-scheduler-data mcp
+codex-schedule setup
 ```
 
-Open a new Codex CLI session to create and manage schedules using natural language. Each CLI's MCP process is a lightweight client; the scheduler continues running in its own process.
+`setup` uses the official `codex mcp add` command and verifies the saved registration. It records the absolute paths of the current Node.js executable, this installation's JavaScript entry point, and the scheduler data directory. It works with Windows npm launchers and with macOS/Linux executables.
+
+Repeated setup preserves a matching registration. An existing, different configuration with the same name is protected; choose a new name or explicitly replace it with `--force`. Other MCP server entries are preserved by the Codex CLI. After moving the installation or changing the Node.js executable, run `codex-schedule setup --force` to update the registered paths.
+
+```powershell
+# Preview the registration:
+codex-schedule setup --dry-run
+
+# With a specific shared data directory:
+codex-schedule --home D:\codex-scheduler-data setup
+
+# Choose a server name or a Codex CLI executable for registration:
+codex-schedule setup --name my_scheduler --codex C:\path\to\codex.exe
+
+# Explicitly replace a different registration under the same name:
+codex-schedule setup --force
+
+codex mcp list
+```
+
+Open a new Codex CLI session and use `/mcp` to inspect the connection, then create and manage schedules using natural language. Each CLI's MCP process is a lightweight client; the scheduler continues running in its own process. Registration itself updates only the MCP configuration; the daemon starts when the server or another management command is first used. Install the package globally before setup so the registered path remains available.
 
 ### MCP tools
 
@@ -149,3 +180,7 @@ npm test
 Automated tests cover timing and timezones, CRUD operations, persistence, single-instance ownership, recovery, the queue-only protocol, writer release for new sessions, and a real MCP stdio subprocess communicating with the daemon.
 
 See [docs/e2e.md](docs/e2e.md) for the live Codex CLI test procedure (Chinese). Model calls use the current Codex authentication, and test prompts are limited to text acknowledgements.
+
+## Publishing
+
+Maintainers publish stable versions by creating a GitHub Release tagged `v<package-version>`. The publish workflow checks the version, runs tests on Windows and Linux, and publishes the built package to npm using trusted publishing. See [docs/publishing.md](docs/publishing.md) for first-release setup and the release checklist.
