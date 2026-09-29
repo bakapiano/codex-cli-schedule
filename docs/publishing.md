@@ -56,4 +56,4 @@ Create and publish a GitHub Release for the new tag, for example `v0.1.1`. The w
 2. Tests and inspects the package on Windows and Linux.
 3. Publishes the compiled package publicly with provenance using npm trusted publishing.
 
-Choose a fresh version for every release. The initial `0.1.0` publication is performed locally; use the workflow starting with the next version. Prerelease distribution can be added as a separate, explicitly tagged release path.
+Choose a fresh version for every release. The initial publication is performed locally; use the workflow for subsequent versions once trusted publishing is configured. Prerelease distribution can be added as a separate, explicitly tagged release path.

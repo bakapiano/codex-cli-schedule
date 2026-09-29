@@ -6,7 +6,7 @@ import { errorMessage } from './model.js';
 
 export async function runMcp(dir: string): Promise<void> {
   await ensureDaemon(dir);
-  const server = new McpServer({ name: 'codex-cli-schedule', version: '0.1.0' });
+  const server = new McpServer({ name: 'codex-cli-schedule', version: '0.1.1' });
   for (const operation of operations) {
     server.registerTool(operation.name, {
       description: operation.description,
