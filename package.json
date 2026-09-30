@@ -1,6 +1,6 @@
 {
   "name": "@bakapiano/codex-cli-schedule",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Schedule prompts for existing or new Codex CLI sessions with a persistent daemon, CLI, and MCP tools.",
   "type": "module",
   "license": "MIT",

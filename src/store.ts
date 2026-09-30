@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { createSchema, nextRun, patchSchema, type ClaimedRun, type Run, type Schedule } from './model.js';
 
 export class Store {
   private readonly db: DatabaseSync;
+  private readonly leasePath: string;
+  private lease?: { owner: string; db: DatabaseSync };
   constructor(path: string) {
     this.db = new DatabaseSync(path);
     this.db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;
@@ -13,22 +16,53 @@ export class Store {
         scheduled_at TEXT NOT NULL, document TEXT NOT NULL, UNIQUE(schedule_id, scheduled_at));
       CREATE INDEX IF NOT EXISTS runs_schedule ON runs(schedule_id, scheduled_at DESC);
       CREATE TABLE IF NOT EXISTS daemon_lease(singleton INTEGER PRIMARY KEY CHECK(singleton=1), pid INTEGER NOT NULL, owner TEXT NOT NULL);`);
+    this.leasePath = `${realpathSync(path)}.lock`;
   }
-  close(): void { this.db.close(); }
+  close(): void {
+    try { if (this.lease) this.releaseLease(this.lease.owner); }
+    finally { this.db.close(); }
+  }
   acquireLease(owner: string): void {
-    this.db.exec('BEGIN IMMEDIATE');
+    if (this.lease) throw new Error('A scheduler daemon already owns this data directory.');
+    // Keep the OS-backed lock on a separate SQLite file so task writes remain
+    // independent. Process exit releases it even after a crash or PID reuse.
+    const lock = new DatabaseSync(this.leasePath);
     try {
-      const lease = this.db.prepare('SELECT pid FROM daemon_lease WHERE singleton=1').get();
-      if (lease) {
-        let alive = true;
-        try { process.kill(Number(lease.pid), 0); } catch (error: any) { alive = error.code !== 'ESRCH'; }
-        if (alive) throw new Error(`A scheduler daemon already owns this data directory (PID ${lease.pid}).`);
-      }
-      this.db.prepare('INSERT OR REPLACE INTO daemon_lease VALUES(1,?,?)').run(process.pid, owner);
-      this.db.exec('COMMIT');
-    } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+      lock.exec('PRAGMA busy_timeout=0; BEGIN EXCLUSIVE');
+    } catch (error: any) {
+      lock.close();
+      if ([5, 6].includes(Number(error.errcode) & 0xff)) throw new Error('A scheduler daemon already owns this data directory.');
+      throw error;
+    }
+    try {
+      this.db.exec('BEGIN IMMEDIATE');
+      try {
+        const lease = this.db.prepare('SELECT pid, owner FROM daemon_lease WHERE singleton=1').get();
+        // Preserve old-version ownership during upgrades. A legacy live PID
+        // requires graceful shutdown or an explicitly verified stale-lease repair.
+        if (lease && !String(lease.owner).startsWith('sqlite-lock:')) {
+          let alive = true;
+          try { process.kill(Number(lease.pid), 0); } catch (error: any) { alive = error.code !== 'ESRCH'; }
+          if (alive) throw new Error(`A scheduler daemon already owns this data directory (legacy lease PID ${lease.pid}). Stop the legacy daemon, or verify its process identity before recovering this lease.`);
+        }
+        this.db.prepare('INSERT OR REPLACE INTO daemon_lease(singleton,pid,owner) VALUES(1,?,?)').run(process.pid, `sqlite-lock:${owner}`);
+        this.db.exec('COMMIT');
+      } catch (error) { this.db.exec('ROLLBACK'); throw error; }
+      this.lease = { owner, db: lock };
+    } catch (error) {
+      try { lock.exec('ROLLBACK'); } finally { lock.close(); }
+      throw error;
+    }
   }
-  releaseLease(owner: string): void { this.db.prepare('DELETE FROM daemon_lease WHERE owner=?').run(owner); }
+  releaseLease(owner: string): void {
+    if (this.lease?.owner !== owner) return;
+    const lock = this.lease.db;
+    try { this.db.prepare('DELETE FROM daemon_lease WHERE owner=?').run(`sqlite-lock:${owner}`); }
+    finally {
+      this.lease = undefined;
+      try { lock.exec('ROLLBACK'); } finally { lock.close(); }
+    }
+  }
   private save(schedule: Schedule): void {
     this.db.prepare('INSERT OR REPLACE INTO schedules VALUES(?,?,?)').run(schedule.id, JSON.stringify(schedule), schedule.nextRunAt);
   }

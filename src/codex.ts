@@ -64,7 +64,7 @@ export class StdioRpc implements Rpc {
     if (!this.stopped) this.child.stdin.write(JSON.stringify(message) + '\n');
   }
   async initialize(): Promise<void> {
-    await this.request('initialize', { clientInfo: { name: 'codex_cli_schedule', version: '0.1.1' }, capabilities: { experimentalApi: true } });
+    await this.request('initialize', { clientInfo: { name: 'codex_cli_schedule', version: '0.1.2' }, capabilities: { experimentalApi: true } });
     this.write({ method: 'initialized' });
   }
   request<T>(method: Method, params: unknown): Promise<T> {
